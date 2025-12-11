@@ -31,22 +31,24 @@ export class AuthService {
       return { user, token };
     } catch (error) {
       if (error.code === 'P2002') {
-        const field = error.meta.target?.[0];
+        const msg = error.message.toLowerCase();
 
-        if (field === 'email') {
+        if (msg.includes('email')) {
           throw new BadRequestException('Este email já está cadastrado.');
         }
 
-        if (field === 'cpf') {
+        if (msg.includes('cpf')) {
           throw new BadRequestException('Este CPF já está cadastrado.');
         }
+
+        throw new BadRequestException('Já existe um registro com estes dados.');
       }
 
       throw error;
     }
   }
 
-  async login(emailOrCpf: string, password: string) {
+    async login(emailOrCpf: string, password: string) {
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ email: emailOrCpf }, { cpf: emailOrCpf }],
