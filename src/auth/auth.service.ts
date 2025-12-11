@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { JwtService } from '@nestjs/jwt';
 import { CreateUserDto } from '../users/dto/create-user-dto';
@@ -14,27 +14,39 @@ export class AuthService {
   async register(createUserDto: CreateUserDto) {
     const { password, email, cpf, fullName } = createUserDto;
 
-    // Hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Criar usuário
-    const user = await this.prisma.user.create({
-      data: {
-        fullName,
-        email,
-        cpf,
-        password: hashedPassword.toString(),
-      },
-    });
+    try {
+      const user = await this.prisma.user.create({
+        data: {
+          fullName,
+          email,
+          cpf,
+          password: hashedPassword,
+        },
+      });
 
-    // Retornar token JWT
-    const token = this.jwtService.sign({ userId: user.id });
+      const token = this.jwtService.sign({ userId: user.id });
 
-    return { user, token };
+      return { user, token };
+    } catch (error) {
+      if (error.code === 'P2002') {
+        const field = error.meta.target?.[0];
+
+        if (field === 'email') {
+          throw new BadRequestException('Este email já está cadastrado.');
+        }
+
+        if (field === 'cpf') {
+          throw new BadRequestException('Este CPF já está cadastrado.');
+        }
+      }
+
+      throw error;
+    }
   }
 
   async login(emailOrCpf: string, password: string) {
-    // Buscar usuário por email ou cpf
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ email: emailOrCpf }, { cpf: emailOrCpf }],
@@ -43,11 +55,9 @@ export class AuthService {
 
     if (!user) throw new UnauthorizedException('Usuário não encontrado');
 
-    // Comparar senha
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) throw new UnauthorizedException('Senha inválida');
 
-    // Retornar token
     const access_token = this.jwtService.sign({ userId: user.id });
     const { password: _, ...userWithoutPassword } = user;
 
